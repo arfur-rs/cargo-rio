@@ -1,7 +1,7 @@
 use std::{
-    fs::File,
-    io::{Read, Write},
+    io::Write,
     net::TcpStream,
+    os::unix::prelude::MetadataExt,
     path::{Path, PathBuf},
 };
 
@@ -44,15 +44,17 @@ impl DeploymentArgs {
 
         trace!(target);
 
-        let mut executable = match executable {
-            Some(x) => File::open(x)?,
+        let executable = match executable {
+            Some(x) => x,
             None => todo!(),
         };
 
-        trace!(executable = format!("{executable:?}"));
+        let executable_size = std::fs::metadata(&executable)?.size();
 
-        let mut executable_contents = Vec::new();
-        executable.read_to_end(&mut executable_contents)?;
+        trace!(
+            executable = format!("{executable:?}"),
+            size = executable_size,
+        );
 
         let tcp = TcpStream::connect(format!("{target}:22"))?;
         let mut session = Session::new()?;
@@ -70,13 +72,13 @@ impl DeploymentArgs {
         let mut remote_file = session.scp_send(
             Path::new("/home/lvuser/robotCommand"),
             0o777,
-            executable_contents.len() as u64,
+            executable_size,
             None,
         )?;
 
         trace!("sending over scp...");
 
-        remote_file.write(&executable_contents)?;
+        remote_file.write_all(&std::fs::read(&executable)?)?;
         remote_file.send_eof()?;
         remote_file.wait_eof()?;
         remote_file.close()?;
