@@ -11,6 +11,7 @@
         ++ (with common.pkgs; [
           pkg-config
           openssl.dev
+          rust-analyzer
         ]);
       };
   };

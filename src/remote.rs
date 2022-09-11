@@ -25,6 +25,7 @@ pub fn find_rio_with_number(team_number: u16) -> Result<String> {
                 // break with the address name.
 
                 // Note that currently, we are just returning the first address.
+                // TODO: Ping each address.
                 break Some(address);
             }
             None => break None,

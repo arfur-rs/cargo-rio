@@ -1,4 +1,5 @@
 use std::{
+    fs,
     io::Write,
     net::TcpStream,
     os::unix::prelude::MetadataExt,
@@ -25,6 +26,11 @@ pub struct DeploymentArgs {
     /// The path to the executable.
     #[clap(long, short)]
     executable: Option<PathBuf>,
+
+    /// A directory containing FRC libraries, that will be deployed under
+    /// `/usr/local/frc/third-party/lib` in the RIO.
+    #[clap(long, short)]
+    library_dir: Option<PathBuf>,
 }
 
 impl DeploymentArgs {
@@ -33,6 +39,7 @@ impl DeploymentArgs {
             team_number,
             address,
             executable,
+            library_dir,
         } = self;
 
         let target = match (team_number, address) {
@@ -83,6 +90,37 @@ impl DeploymentArgs {
         remote_file.wait_eof()?;
         remote_file.close()?;
         remote_file.wait_close()?;
+
+        match library_dir {
+            Some(library_dir) => {
+                for library_file in fs::read_dir(library_dir)? {
+                    let library_file = library_file?;
+                    let library_file = library_file.path();
+
+                    let size = fs::metadata(&library_file)?.size();
+                    // TODO: research if this is the intended target directory.
+                    let remote_path_name = format!(
+                        "/lib/{library_file}",
+                        library_file = library_file.file_name().unwrap().to_str().unwrap(),
+                    );
+
+                    let mut remote_file =
+                        session.scp_send(Path::new(&remote_path_name), 0o777, size, None)?;
+
+                    remote_file.write_all(&std::fs::read(&library_file)?)?;
+                    remote_file.send_eof()?;
+                    remote_file.wait_eof()?;
+                    remote_file.close()?;
+                    remote_file.wait_close()?;
+
+                    println!(
+                        "Sent library {library_file} succesfully...",
+                        library_file = library_file.to_str().unwrap()
+                    );
+                }
+            }
+            None => (),
+        }
 
         println!("Send complete ✅");
 
