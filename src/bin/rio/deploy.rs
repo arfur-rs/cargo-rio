@@ -31,6 +31,10 @@ pub struct DeploymentArgs {
     /// `/usr/local/frc/third-party/lib` in the RIO.
     #[clap(long, short)]
     library_dir: Option<PathBuf>,
+
+    /// Whether or not to deploy an initialization script.
+    #[clap(long, short)]
+    initializer: bool,
 }
 
 impl DeploymentArgs {
@@ -40,6 +44,7 @@ impl DeploymentArgs {
             address,
             executable,
             library_dir,
+            initializer,
         } = self;
 
         let target = match (team_number, address) {
@@ -67,7 +72,7 @@ impl DeploymentArgs {
         let mut session = Session::new()?;
         session.set_tcp_stream(tcp);
         session.handshake()?;
-        session.userauth_password("lvuser", "")?;
+        session.userauth_password("admin", "")?;
 
         println!("SSH connection to RIO established at {target}:22.");
 
@@ -76,8 +81,15 @@ impl DeploymentArgs {
             authenticated = session.authenticated()
         );
 
-        let mut remote_file = session.scp_send(
-            Path::new("/home/lvuser/robotCommand"),
+        let mut channel = session.channel_session()?;
+        channel.exec("/usr/local/frc/bin/frcKillRobot.sh")?;
+        channel.send_eof()?;
+        channel.wait_eof()?;
+        channel.close()?;
+        channel.wait_close()?;
+
+        let mut remote_executable = session.scp_send(
+            Path::new("/home/lvuser/myRustRobotProgram"),
             0o777,
             executable_size,
             None,
@@ -85,11 +97,30 @@ impl DeploymentArgs {
 
         trace!("sending over scp...");
 
-        remote_file.write_all(&std::fs::read(&executable)?)?;
-        remote_file.send_eof()?;
-        remote_file.wait_eof()?;
-        remote_file.close()?;
-        remote_file.wait_close()?;
+        remote_executable.write_all(&std::fs::read(&executable)?)?;
+        remote_executable.send_eof()?;
+        remote_executable.wait_eof()?;
+        remote_executable.close()?;
+        remote_executable.wait_close()?;
+
+        if initializer {
+            let content = "/home/lvuser/myRustRobotProgram\n";
+
+            let mut remote_initializer = session.scp_send(
+                Path::new("/home/lvuser/robotCommand"),
+                0o777,
+                content.len() as u64,
+                None,
+            )?;
+
+            trace!("sending initializer over scp...");
+
+            remote_initializer.write_all(content.as_bytes())?;
+            remote_initializer.send_eof()?;
+            remote_initializer.wait_eof()?;
+            remote_initializer.close()?;
+            remote_initializer.wait_close()?;
+        }
 
         match library_dir {
             Some(library_dir) => {
@@ -98,11 +129,12 @@ impl DeploymentArgs {
                     let library_file = library_file.path();
 
                     let size = fs::metadata(&library_file)?.size();
-                    // TODO: research if this is the intended target directory.
                     let remote_path_name = format!(
-                        "/lib/{library_file}",
+                        "/usr/local/frc/third-party/lib/{library_file}",
                         library_file = library_file.file_name().unwrap().to_str().unwrap(),
                     );
+
+                    println!("Sending file to {remote_path_name}");
 
                     let mut remote_file =
                         session.scp_send(Path::new(&remote_path_name), 0o777, size, None)?;
@@ -122,7 +154,15 @@ impl DeploymentArgs {
             None => (),
         }
 
-        println!("Send complete ✅");
+        // Once we're done, let's keep the system in sync.
+        let mut channel = session.channel_session()?;
+        channel.exec("sync && ldconfig && . /etc/profile.d/natinst-path.sh; /usr/local/frc/bin/frcKillRobot.sh -t -r")?;
+        channel.send_eof()?;
+        channel.wait_eof()?;
+        channel.close()?;
+        channel.wait_close()?;
+
+        println!("Send complete, restarted robot program ✅");
 
         Ok(())
     }
