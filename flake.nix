@@ -13,6 +13,7 @@
           openssl.dev
           rust-analyzer
           cargo-release
+          git-cliff
         ]);
       };
   };
