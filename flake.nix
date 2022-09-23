@@ -12,6 +12,7 @@
           pkg-config
           openssl.dev
           rust-analyzer
+          cargo-release
         ]);
       };
   };

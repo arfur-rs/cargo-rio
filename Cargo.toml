@@ -1,17 +1,26 @@
 [package]
 name = "cargo-rio"
+description = "Interface with the FRC RoboRIO through Cargo."
 version = "0.1.0"
+
+license = "MIT"
+repository = "https://github.com/arfur-rs/cargo-rio/"
+
 edition = "2021"
 
+[package.metadata.nix]
+build = true
+
 [dependencies]
-clap = { version = "3.1", features = ["derive", "wrap_help"] }
 color-eyre = "0.6.2"
 ssh2 = "0.9.3"
 thiserror = "1.0.32"
 tracing = "0.1.36"
-tracing-subscriber = { version = "0.3.15", features = ["env-filter"] }
 
-[features]
+[dependencies.clap]
+version = "3.1"
+features = ["derive", "wrap_help"]
 
-[package.metadata.nix]
-build = true
+[dependencies.tracing-subscriber]
+version = "0.3.15"
+features = ["env-filter"]
